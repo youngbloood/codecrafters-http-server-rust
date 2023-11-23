@@ -1,5 +1,5 @@
 use std::{
-    io::{self, Read},
+    io::{self, Read, Write},
     net::{TcpListener, TcpStream},
 };
 
@@ -23,5 +23,7 @@ fn handle_tcpstream(ts: &mut TcpStream) {
     let mut buffer = Vec::new();
     // read the whole file
     let _ = ts.read(&mut buffer);
-    println!("buf = {:?}", buffer);
+    // println!("buf = {:?}", buffer);
+    let resp = String::from("HTTP/1.1 200 OK\r\n\r\n");
+    let _ = ts.write(resp.as_bytes());
 }
