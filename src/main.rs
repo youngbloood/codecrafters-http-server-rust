@@ -9,7 +9,6 @@ fn main() {
     for stream in listener.incoming() {
         match stream {
             Ok(mut _stream) => {
-                println!("accepted new connection");
                 handle_tcpstream(&mut _stream);
             }
             Err(e) => {
