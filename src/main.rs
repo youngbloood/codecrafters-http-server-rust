@@ -1,23 +1,39 @@
 mod http;
+mod thread;
 mod util;
 
 use crate::http::http::Http;
 use anyhow::Error;
-use nom::AsBytes;
-use std::fmt::format;
-use std::io::{BufRead, BufReader, Read, Write};
+use slog::{error, slog_error};
+use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::vec;
+use std::thread::{self as stdthread, Thread};
+
+#[macro_use]
+extern crate slog;
 
 fn main() -> Result<(), Error> {
     // You can use print statements as follows for debugging, they'll be visible when running tests.
     println!("Logs from your program will appear here!");
+    println!("Now ThreadID is: {:?}", stdthread::current().id());
 
     // Uncomment this block to pass the first stage
     let listener = TcpListener::bind("127.0.0.1:4221").unwrap();
     for stream in listener.incoming() {
         match stream {
-            Ok(mut stream) => handle_tcp(&mut stream)?,
+            Ok(mut stream) => {
+                let td = stdthread::spawn(move || {
+                    let result = match handle_tcp(&mut stream) {
+                        Ok(_) => None,
+                        Err(err) => Some(err),
+                    };
+                    if result.is_some() {
+                        println!("err = {:?}", result.unwrap());
+                    }
+                });
+                println!("ThreadID = {:?}", td.thread().id());
+                td.join().expect("Couldn't join on the associated thread");
+            }
             Err(e) => {
                 println!("error: {}", e);
             }
@@ -35,14 +51,43 @@ fn handle_tcp(ts: &mut TcpStream) -> Result<(), Error> {
     ts.read(&mut buf)?;
 
     let raw_req = std::str::from_utf8(&buf).unwrap().trim_end_matches("\0");
-    println!("raw = {:?}", raw_req);
+    // println!("raw = {:?}", raw_req);
 
     let htp = Http::new(raw_req)?;
 
+    // resp_last_path(ts, &htp);
+    get_user_agent(ts, &htp);
+
+    ts.shutdown(std::net::Shutdown::Both)?;
+
+    return Ok(());
+}
+
+fn get_user_agent(ts: &mut TcpStream, htp: &Http) {
+    let _user_agent_path = &"/user-agent".to_string();
+    let resp_tmpl = match &htp.full_path {
+        _user_agent_path => {
+            Some("HTTP/1.1 200 OK\r\n\r\nContent-Type: text/plain\r\nContent-Length: ")
+        }
+        _ => None,
+    };
+    if resp_tmpl.is_none() {
+        return;
+    }
+    let headers = htp.headers();
+    let default_agent = "".to_string();
+    let user_agent = headers.get("User-Agent").unwrap_or(&default_agent);
+    let mut resp = format!("{}{}", resp_tmpl.unwrap(), user_agent.len());
+    resp = format!("{}\r\n\r\n{}", resp, user_agent);
+
+    ts.write(resp.as_bytes())
+        .expect("Failed to write response bytes to stream");
+}
+
+fn resp_last_path(ts: &mut TcpStream, htp: &Http) {
     let resp_tmpl = match htp.path() {
         _ => "HTTP/1.1 200 OK\r\n\r\nContent-Type: text/plain\r\nContent-Length: ",
     };
-
     let last = htp
         .path
         .as_ref()
@@ -54,11 +99,7 @@ fn handle_tcp(ts: &mut TcpStream) -> Result<(), Error> {
 
     let mut response = format!("{} {}", String::from(resp_tmpl), last.len());
     response = format!("{}\r\n\r\n{}", response, last);
-    println!("response = {}", response);
+    // println!("response = {}", response);
     ts.write(response.as_bytes())
         .expect("Failed to write response bytes to stream");
-
-    ts.shutdown(std::net::Shutdown::Both)?;
-
-    return Ok(());
 }

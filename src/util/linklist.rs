@@ -1,6 +1,5 @@
-use std::vec::Vec;
+use std::{fmt::Debug, vec::Vec};
 
-#[derive(Debug)]
 pub struct LinkList<T> {
     len: usize,
     head: Link<T>,
@@ -8,10 +7,21 @@ pub struct LinkList<T> {
 
 type Link<T> = Option<Box<Node<T>>>;
 
-#[derive(Debug)]
-pub struct Node<T> {
+struct Node<T> {
     elem: T,
     next: Link<T>,
+}
+
+impl<T> Debug for Node<T>
+where
+    T: Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Node")
+            .field("elem", &self.elem)
+            .field("next", &self.next)
+            .finish()
+    }
 }
 
 impl<T> LinkList<T> {
@@ -114,6 +124,18 @@ impl<T> Drop for LinkList<T> {
         while let Some(mut boxed_node) = cur_link {
             cur_link = boxed_node.next.take();
         }
+    }
+}
+
+impl<T> Debug for LinkList<T>
+where
+    Link<T>: Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("LinkList")
+            .field("len", &self.len)
+            .field("head", &self.head)
+            .finish()
     }
 }
 
