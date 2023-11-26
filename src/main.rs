@@ -4,10 +4,9 @@ mod util;
 
 use crate::http::http::Http;
 use anyhow::Error;
-use slog::{error, slog_error};
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
-use std::thread::{self as stdthread, Thread};
+use std::thread::{self as stdthread};
 
 #[macro_use]
 extern crate slog;
@@ -56,13 +55,15 @@ fn handle_tcp(ts: &mut TcpStream) -> Result<(), Error> {
     let htp = Http::new(raw_req)?;
 
     // resp_last_path(ts, &htp);
-    get_user_agent(ts, &htp);
+    // get_user_agent(ts, &htp);
+    get_file(ts, &htp);
 
     ts.shutdown(std::net::Shutdown::Both)?;
 
     return Ok(());
 }
 
+// 返回header中的User-Agent的值
 fn get_user_agent(ts: &mut TcpStream, htp: &Http) {
     let _user_agent_path = &"/user-agent".to_string();
     let resp_tmpl = match &htp.full_path {
@@ -80,10 +81,12 @@ fn get_user_agent(ts: &mut TcpStream, htp: &Http) {
     let mut resp = format!("{}{}", resp_tmpl.unwrap(), user_agent.len());
     resp = format!("{}\r\n\r\n{}", resp, user_agent);
 
-    ts.write(resp.as_bytes())
-        .expect("Failed to write response bytes to stream");
+    ts.write(resp.as_bytes()).expect("write tcpstream failed");
 }
 
+// 返回请求路径的最后一个
+// eg： GET /abc/edf
+// 返回 edf
 fn resp_last_path(ts: &mut TcpStream, htp: &Http) {
     let resp_tmpl = match htp.path() {
         _ => "HTTP/1.1 200 OK\r\n\r\nContent-Type: text/plain\r\nContent-Length: ",
@@ -102,4 +105,53 @@ fn resp_last_path(ts: &mut TcpStream, htp: &Http) {
     // println!("response = {}", response);
     ts.write(response.as_bytes())
         .expect("Failed to write response bytes to stream");
+}
+
+// 获取一个文件
+fn get_file(ts: &mut TcpStream, htp: &Http) {
+    let path = htp.path.as_ref();
+    if htp.method() != "GET"
+        || path.is_none()
+        || path.unwrap().len() != 2
+        || path.unwrap().index(0).unwrap().value != "files"
+    {
+        ts.write("HTTP/1.1 404 NOT FOUND".as_bytes())
+            .expect("write tcpstream failed");
+        return;
+    }
+
+    let filename = &path.unwrap().index(path.unwrap().len() - 1).unwrap().value;
+    let mut read_dir = std::fs::read_dir("./src").unwrap();
+    match read_dir
+        .find(|x| {
+            return x.as_ref().unwrap().file_name().into_string().unwrap() == filename.to_string();
+        })
+        .unwrap()
+    {
+        // 找到该文件，读取并返回
+        Ok(filename) => {
+            let content = std::fs::read(filename.path()).unwrap();
+            let resp = format!(
+                "HTTP/1.1 200 OK
+Content-Type: application/octet-stream
+Content-Disposition: attachment; filename={file_name:?}
+Content-Length: {content_len}
+
+
+{content}",
+                content = String::from_utf8_lossy(&content),
+                content_len = content.len(),
+                file_name = filename.file_name(),
+            );
+
+            ts.write(resp.as_bytes()).expect("write tcpstream failed");
+            return;
+        }
+        Err(e) => {
+            eprint!("Error: {}", e);
+            ts.write("HTTP/1.1 404 NOT FOUND".as_bytes())
+                .expect("write tcpstream failed");
+            return;
+        }
+    };
 }

@@ -10,6 +10,9 @@ pub struct PathNode {
 pub fn new_path(raw: &str, list: Vec<&str>) -> LinkList<PathNode> {
     let mut ll = LinkList::<PathNode>::new();
     for i in list {
+        if i.len() == 0 {
+            continue;
+        }
         ll.push(PathNode {
             raw: raw.to_string(),
             key: i.to_string(),

@@ -26,7 +26,6 @@ impl Http {
             http_version: "".to_string(),
             headers: HashMap::<String, String>::new(),
         };
-
         http.parse()?;
         return Ok(http);
     }
@@ -39,7 +38,7 @@ impl Http {
         self.method = base.next().unwrap().to_owned();
 
         // path的解析
-        let full_path = self.full_path = base.next().unwrap().to_owned();
+        self.full_path = base.next().unwrap().to_owned();
         self.path = Some(path::new_path(
             &self.full_path,
             self.full_path.split("/").collect(),
@@ -49,18 +48,24 @@ impl Http {
         // 解析headers
         let mut line = list.next().unwrap();
         while line.len() != 0 {
-            let first_colon = line.find(":").unwrap();
+            let mut kvs = line.splitn(2, |x| x == ':');
             self.headers.insert(
-                line[..first_colon].to_string(),
-                line[first_colon + 2..].to_string(),
+                kvs.next().unwrap().to_owned(),
+                kvs.next().unwrap().to_owned(),
             );
+            if list.next().is_none() {
+                break;
+            }
             line = list.next().unwrap();
         }
 
         // TODO: 解析body
-        let content_type = self.headers.get("Content-Type").unwrap();
+        let content_type = match self.headers.get("Content-Type") {
+            Some(ct) => ct,
+            None => "",
+        };
 
-        println!("self = {:?}", self);
+        println!("http = {:?}", self);
 
         Ok(())
     }
