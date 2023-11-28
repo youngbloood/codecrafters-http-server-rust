@@ -11,4 +11,4 @@
 - [x] [Parse headers](https://app.codecrafters.io/courses/http-server/stages/5)
 - [x] [Concurrent connections](https://app.codecrafters.io/courses/http-server/stages/6)
 - [x] [Get a file](https://app.codecrafters.io/courses/http-server/stages/7)
-- [ ] [Post a file](https://app.codecrafters.io/courses/http-server/stages/8)
+- [x] [Post a file](https://app.codecrafters.io/courses/http-server/stages/8)

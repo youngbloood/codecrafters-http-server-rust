@@ -1,25 +1,66 @@
 use crate::http::http::Http;
 use anyhow::Error;
+use nom::{AsBytes, FindSubstring};
+use regex::Regex;
 use std::{
     io::{Read, Write},
     net::TcpStream,
 };
 
+const READ_LENGH: usize = 1024;
+
 pub fn handle_tcp(ts: &mut TcpStream) -> Result<(), Error> {
-    ts.write_all(b"HTTP/1.1 200 OK\r\n\r\n")
-        .expect("write failed");
+    // 读取所有的数据至all中
+    let mut all = Vec::<u8>::new();
+    let reg = Regex::new(r"Content-Length: (?<length>[0-9]*)\r\n").unwrap();
 
-    let mut buf = [0u8; 256];
-    ts.read(&mut buf)?;
+    'outer: loop {
+        let mut buf = [0u8; READ_LENGH];
+        ts.read(&mut buf)?;
 
-    let raw_req = std::str::from_utf8(&buf).unwrap().trim_end_matches("\0");
-    // println!("raw = {:?}", raw_req);
+        all.extend_from_slice(buf.to_vec().strip_suffix(&['0' as u8]).unwrap_or(&buf));
 
-    let htp = Http::new(raw_req)?;
+        let all_str = String::from_utf8_lossy(&all).to_string();
+        let mut content_length = 0_usize;
+
+        match reg.captures(all_str.as_str()) {
+            Some(caps) => {
+                content_length = caps["length"].parse::<usize>().unwrap();
+            }
+            None => {}
+        }
+
+        let body_start_pos = all.as_slice().find_substring("\r\n\r\n").unwrap_or(0);
+        if body_start_pos == 0 {
+            continue;
+        }
+
+        // content-length 比 all中剩下的body的长度还长，那还需要读取
+        while content_length > all[body_start_pos..].len() {
+            let mut left_buf: [u8; READ_LENGH] = [0u8; READ_LENGH];
+            ts.read(&mut left_buf)?;
+            println!("end with 0: {}", left_buf.ends_with(&['\0' as u8]));
+
+            all.extend_from_slice(
+                left_buf
+                    .to_vec()
+                    .strip_suffix(&['0' as u8])
+                    .unwrap_or(&left_buf),
+            );
+            if content_length < READ_LENGH {
+                break 'outer;
+            }
+            content_length -= READ_LENGH;
+        }
+    }
+
+    let mut htp = Http::new();
+    htp.parse_base(&all)?;
 
     // resp_last_path(ts, &htp);
     // get_user_agent(ts, &htp);
-    get_file(ts, &htp);
+    // get_file(ts, &htp);
+    post_file(ts, &htp);
 
     ts.shutdown(std::net::Shutdown::Both)?;
 
@@ -65,7 +106,6 @@ pub fn resp_last_path(ts: &mut TcpStream, htp: &Http) {
 
     let mut response = format!("{} {}", String::from(resp_tmpl), last.len());
     response = format!("{}\r\n\r\n{}", response, last);
-    // println!("response = {}", response);
     ts.write(response.as_bytes())
         .expect("Failed to write response bytes to stream");
 }
@@ -117,4 +157,17 @@ Content-Length: {content_len}
             return;
         }
     };
+}
+
+fn post_file(ts: &mut TcpStream, htp: &Http) {
+    let path = htp.path.as_ref();
+    if htp.method() != "GET"
+        || path.is_none()
+        || path.unwrap().len() != 2
+        || path.unwrap().index(0).unwrap().value != "files"
+    {
+        ts.write("HTTP/1.1 404 NOT FOUND".as_bytes())
+            .expect("write tcpstream failed");
+        return;
+    }
 }
