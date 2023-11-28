@@ -39,8 +39,6 @@ pub fn handle_tcp(ts: &mut TcpStream) -> Result<(), Error> {
         while content_length > all[body_start_pos..].len() {
             let mut left_buf: [u8; READ_LENGH] = [0u8; READ_LENGH];
             ts.read(&mut left_buf)?;
-            println!("end with 0: {}", left_buf.ends_with(&['\0' as u8]));
-
             all.extend_from_slice(
                 left_buf
                     .to_vec()
