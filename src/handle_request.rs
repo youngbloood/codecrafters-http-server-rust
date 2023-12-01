@@ -12,53 +12,34 @@ const READ_LENGH: usize = 1024;
 pub fn handle_tcp(ts: &mut TcpStream) -> Result<(), Error> {
     // 读取所有的数据至all中
     let mut all = Vec::<u8>::new();
-    let reg = Regex::new(r"Content-Length: (?<length>[0-9]*)\r\n").unwrap();
-
-    'outer: loop {
+    loop {
         let mut buf = [0u8; READ_LENGH];
-        ts.read(&mut buf)?;
+        let actual_len = ts.read(&mut buf).unwrap();
 
-        all.extend_from_slice(buf.to_vec().strip_suffix(&['0' as u8]).unwrap_or(&buf));
-
-        let all_str = String::from_utf8_lossy(&all).to_string();
-        let mut content_length = 0_usize;
-
-        match reg.captures(all_str.as_str()) {
-            Some(caps) => {
-                content_length = caps["length"].parse::<usize>().unwrap();
-            }
-            None => {}
+        if actual_len == 0 || actual_len < READ_LENGH {
+            all.extend(&buf[..actual_len].to_vec());
+            break;
         }
-
-        let body_start_pos = all.as_slice().find_substring("\r\n\r\n").unwrap_or(0);
-        if body_start_pos == 0 {
-            continue;
-        }
-
-        // content-length 比 all中剩下的body的长度还长，那还需要读取
-        while content_length > all[body_start_pos..].len() {
-            let mut left_buf: [u8; READ_LENGH] = [0u8; READ_LENGH];
-            ts.read(&mut left_buf)?;
-            all.extend_from_slice(
-                left_buf
-                    .to_vec()
-                    .strip_suffix(&['0' as u8])
-                    .unwrap_or(&left_buf),
-            );
-            if content_length < READ_LENGH {
-                break 'outer;
-            }
-            content_length -= READ_LENGH;
-        }
+        all.extend(&buf.to_vec());
     }
 
     let mut htp = Http::new();
     htp.parse_base(&all)?;
 
-    // resp_last_path(ts, &htp);
+    // GET: /abc/def
+    // RESP: def
+    resp_last_path(ts, &htp);
+
+    // GET: /abc/def User-Agent: <USER-AGENT>
+    // RESP: <USER-AGENT>
     // get_user_agent(ts, &htp);
+
+    // GET: /files/main.rs
+    // RESP: main.rs's content
     // get_file(ts, &htp);
-    post_file(ts, &htp);
+
+    // POST: /files/<SAVED-FILENAME>
+    // post_file(ts, &htp);
 
     ts.shutdown(std::net::Shutdown::Both)?;
 
@@ -168,4 +149,8 @@ fn post_file(ts: &mut TcpStream, htp: &Http) {
             .expect("write tcpstream failed");
         return;
     }
+
+    ts.write("HTTP/1.1 200 OK".as_bytes())
+        .expect("write tcpstream failed");
+    return;
 }

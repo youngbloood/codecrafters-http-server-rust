@@ -13,7 +13,7 @@
 - [x] [Get a file](https://app.codecrafters.io/courses/http-server/stages/7)
 - [x] [Post a file](https://app.codecrafters.io/courses/http-server/stages/8)
 
-## Todo List
+## Other Todo List
 
 - [ ] Route and Parse the route
-- [ ] Remove the buffer's end '\0' that read from TcpStream
+- [x] Read a completed http packet

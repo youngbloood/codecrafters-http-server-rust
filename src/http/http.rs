@@ -78,7 +78,7 @@ impl Http {
             );
         }
 
-        self.body = raw[blank_pos..].to_vec();
+        self.body = raw[blank_pos + 4..].to_vec();
         println!("http = {:?}", self);
 
         self.handle_body()?;
